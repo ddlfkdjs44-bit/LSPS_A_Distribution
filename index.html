@@ -1177,6 +1177,9 @@ function subscribeRealtime(){
     if(viewMode==='note')renderNotesView();
   }).subscribe();
   if(isLeader()){
+    // 실시간 구독이 꺼져 있어도 놓치지 않도록 30초마다 가입 대기 목록을 다시 확인
+    setInterval(()=>{if(!document.hidden)loadPendingSignups();},30000);
+    document.addEventListener('visibilitychange',()=>{if(!document.hidden)loadPendingSignups();});
     sb.channel('profiles_ch').on('postgres_changes',{event:'*',schema:'public',table:'profiles'},async()=>{
       await loadPendingSignups();
       renderSignupBellModal();
@@ -1206,16 +1209,36 @@ function refreshLeaveRequestBadge(){
   const n=leaveRequests.filter(r=>r.status==='pending').length;
   badge.style.display=n>0?'inline-flex':'none';badge.textContent=n;
 }
+let lastPendingCount=null;
 async function loadPendingSignups(){
   if(!isLeader())return;
-  const {data:rows}=await sb.from('profiles').select('*').eq('approved',false).order('created_at',{ascending:true});
+  const {data:rows,error}=await sb.from('profiles').select('*').eq('approved',false).order('created_at',{ascending:true});
+  if(error){console.error(error);return;}
   pendingSignups=rows||[];
   refreshSignupBadge();
+  const n=pendingSignups.length;
+  // 새 가입 신청이 생기면(또는 로그인 시 대기 건이 있으면) 화면 상단에 알림을 띄움
+  if(n>0&&(lastPendingCount===null||n>lastPendingCount)){
+    notifyToast(lastPendingCount===null?`가입 승인 대기 ${n}건이 있어요 (눌러서 확인)`:`🔔 새 가입 신청이 왔어요: ${pendingSignups[n-1].name} (눌러서 확인)`);
+  }
+  lastPendingCount=n;
 }
 function refreshSignupBadge(){
-  const badge=document.getElementById('signup-badge');if(!badge)return;
+  const badge=document.getElementById('signup-badge');
   const n=pendingSignups.length;
+  document.title=(n>0?`(${n}) `:'')+'A동 배전팀 업무 일정'; // 탭 제목에도 대기 건수 표시
+  if(!badge)return;
   badge.style.display=n>0?'inline-flex':'none';badge.textContent=n;
+}
+function notifyToast(msg){
+  let el=document.getElementById('notify-toast');
+  if(!el){
+    el=document.createElement('div');el.id='notify-toast';
+    el.style.cssText='position:fixed;top:18px;left:50%;transform:translateX(-50%);z-index:100000;background:var(--accent);color:#fff;padding:11px 18px;border-radius:12px;font-weight:700;font-size:13.5px;box-shadow:0 8px 24px rgba(0,0,0,.25);cursor:pointer;display:none;';
+    el.onclick=()=>{el.style.display='none';openSignupBell();};
+    document.body.appendChild(el);
+  }
+  el.textContent=msg;el.style.display='block';clearTimeout(el._t);el._t=setTimeout(()=>{el.style.display='none';},10000);
 }
 /* ── 팀 공지사항 팝업 ── */
 let currentAnnouncement=null;
