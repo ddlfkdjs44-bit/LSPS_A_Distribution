@@ -170,6 +170,14 @@
   .cell:hover{border-color:var(--accent);background:var(--paper);box-shadow:0 2px 8px rgba(14,107,115,.1);}
   .cell:hover::after{content:"+";position:absolute;top:5px;right:8px;font-size:15px;font-weight:600;color:var(--accent);opacity:.55;}
   .cell.muted{opacity:.45;} .cell.muted:hover::after{display:none;}
+  /* ── 달력 음영 (화면이 전부 흰색이라 칸 구분이 안 되던 문제) ── */
+  html[data-theme="light"]{--bg:#e9ecf1;--cell-bg:#f1f3f8;}
+  html[data-theme="light"] .cell{border-color:#d9dee7;}
+  html[data-theme="light"] .weekdays{background:#f6f7fa;border-radius:10px;margin:0 14px;padding:9px 0 7px;}
+  .cell.wk-sat:not(.holiday):not(:hover){background-image:linear-gradient(rgba(var(--accent-rgb),.09),rgba(var(--accent-rgb),.09));}
+  .cell.wk-sun:not(.holiday):not(:hover){background-image:linear-gradient(rgba(210,84,58,.08),rgba(210,84,58,.08));}
+  html[data-theme="light"] .cell.muted{background:#e2e6ec;}
+  html[data-theme="dark"] .cell.muted{background:#1a1d21;}
   .cell.today{border-color:var(--accent);background:var(--accent-tint);box-shadow:inset 0 0 0 2px var(--accent);}
   .today-badge{display:inline-block;vertical-align:middle;margin-left:4px;background:var(--accent);color:#fff;font-size:9px;font-weight:800;letter-spacing:.01em;padding:1.5px 6px;border-radius:20px;line-height:1.5;white-space:nowrap;animation:todayBlink 1.9s ease-in-out infinite;}
   @keyframes todayBlink{0%,100%{opacity:1;}50%{opacity:.6;}}
@@ -1008,7 +1016,7 @@ const KEY='adist-schedule-v1';
 
 /* ════════════════ Supabase 연동 (팀 공유) ════════════════ */
 // ▼ A동 배전팀 전용 Supabase 프로젝트 값으로 교체하세요 (품질팀 프로젝트와 분리 — adist-setup.sql 참고)
-const SUPABASE_URL='https://qrxeqerwfzqjlwhywvja.supabase.co/';
+const SUPABASE_URL='https://qrxeqerwfzqjlwhywvja.supabase.co/'.replace(/\/+$/,'');
 const SUPABASE_ANON_KEY='sb_publishable_FLIMPJysyaNYlgCnixQsvg_ve5r1oXk';
 const NOT_CONFIGURED=SUPABASE_URL.includes('YOUR-PROJECT')||SUPABASE_ANON_KEY.includes('YOUR-');
 const sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
@@ -2202,7 +2210,7 @@ function renderWeek(weekStart,curMonth){
     const hol=HOLIDAYS[s];
     let dcls='';if(dow===0)dcls='sun';if(dow===6)dcls='sat';if(hol)dcls='hol';
     const holLbl=hol?`<span class="hol-lbl">${hol}</span>`:'';
-    cells+=`<div class="cell ${muted?'muted':''} ${isToday?'today':''} ${hol?'holiday':''}" style="min-height:${h}px" onclick="newEvent('${s}')"><span class="dnum ${dcls}">${d.getDate()}</span>${isToday?'<span class="today-badge">오늘!</span>':''}${holLbl}</div>`;
+    cells+=`<div class="cell ${muted?'muted':''} ${isToday?'today':''} ${hol?'holiday':''} ${dow===0?'wk-sun':''} ${dow===6?'wk-sat':''}" style="min-height:${h}px" onclick="newEvent('${s}')"><span class="dnum ${dcls}">${d.getDate()}</span>${isToday?'<span class="today-badge">오늘!</span>':''}${holLbl}</div>`;
   }
   let bars='';
   segs.forEach(sg=>{
