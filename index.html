@@ -1780,8 +1780,63 @@ function recEnsureFrame(){
   document.getElementById('rec-frame-wrap').appendChild(f);
 }
 function recApi(){const f=recFrame();return f&&f.contentWindow&&f.contentWindow.__recGet?f.contentWindow:null;}
+const REC_HOOK=String.raw`
+window.__recGet=function(){
+            const st={inputs:{},checks:{},order:Object.assign({},checkOrder)};
+            document.querySelectorAll('main input[id],main select[id],main textarea[id]').forEach(el=>{st.inputs[el.id]=el.value;});
+            document.querySelectorAll('#checkbox_container input[type="checkbox"]').forEach(cb=>{st.checks[cb.getAttribute('data-key')]=cb.checked;});
+            return st;
+        };
+        window.__recSet=function(st){
+            if(!st)return;
+            Object.keys(st.inputs||{}).forEach(id=>{const el=document.getElementById(id);if(el)el.value=st.inputs[id];});
+            document.querySelectorAll('#checkbox_container input[type="checkbox"]').forEach(cb=>{const k=cb.getAttribute('data-key');if(st.checks&&k in st.checks)cb.checked=!!st.checks[k];});
+            if(st.order)Object.keys(st.order).forEach(k=>{checkOrder[k]=st.order[k];});
+            updateView();
+        };
+        window.__recReset=function(){loadPreset();document.getElementById('info_date').valueAsDate=new Date();};
+`;
+let recTplVer=0, recTplChecked=0;
+function recProcessRaw(raw){
+  const doc=new DOMParser().parseFromString(raw,'text/html');
+  let main=null;
+  doc.querySelectorAll('script').forEach(sc=>{if(!sc.getAttribute('src')&&sc.textContent.includes('function loadPreset'))main=sc;});
+  if(!main||!doc.getElementById('info_date'))return null;
+  doc.querySelectorAll('script').forEach(sc=>{if(sc!==main)sc.remove();});
+  doc.querySelectorAll('style').forEach(st=>{if((st.id||'').indexOf('codex')===0)st.remove();});
+  main.textContent+=REC_HOOK;
+  return '<!DOCTYPE html>'+doc.documentElement.outerHTML;
+}
+function recApplyHtml(html){
+  const f=recFrame();if(!f)return;
+  let st=null;const api=recApi();if(api){try{st=api.__recGet();}catch(_){}}
+  f.onload=()=>{if(st){try{f.contentWindow.__recSet(st);}catch(_){}}f.onload=null;};
+  f.srcdoc=html;
+}
+async function recCheckTpl(force){
+  if(!force&&Date.now()-recTplChecked<60000)return;recTplChecked=Date.now();
+  try{
+    const {data:r,error}=await sb.from('schedule_data').select('payload,updated_at').eq('id','rec_template').maybeSingle();
+    if(error||!r||!r.payload||!r.payload.html)return;
+    const v=new Date(r.updated_at).getTime();if(v===recTplVer)return;
+    recTplVer=v;recApplyHtml(r.payload.html);renderRecordView();
+  }catch(e){console.warn(e);}
+}
+async function recUploadTpl(inp){
+  const file=inp.files[0];inp.value='';if(!file||!isLeader())return;
+  const html=recProcessRaw(await file.text());
+  if(!html){alert('기록지 파일이 아닌 것 같아요. (시험일 입력칸과 loadPreset 함수가 있는 기록지 html만 올릴 수 있어요)');return;}
+  if(!confirm(`'${file.name}'로 기록지 양식을 업데이트할까요?\n팀 전체에 바로 적용돼요. (이미 저장한 기록지 데이터는 그대로예요)`))return;
+  const ts=new Date().toISOString();
+  const {data:rows,error}=await sb.from('schedule_data').update({payload:{html,name:file.name},updated_by:profile.id,updated_at:ts}).eq('id','rec_template').select('id');
+  if(error){alert('양식 업데이트에 실패했어요: '+error.message);return;}
+  if(!rows||!rows.length){alert("서버에 양식 저장 칸이 아직 없어요. Supabase SQL Editor에서 아래를 한 번만 실행해줘요.\n\ninsert into schedule_data (id, payload) values ('rec_template', '{}'::jsonb) on conflict (id) do nothing;");return;}
+  recTplVer=new Date(ts).getTime();recApplyHtml(html);renderRecordView();
+  const el=document.getElementById('saving');if(el){el.classList.add('show');setTimeout(()=>el.classList.remove('show'),1100);}
+}
+
 function renderRecordView(){
-  recEnsureFrame();
+  recEnsureFrame();recCheckTpl();
   const projs=data.projects.filter(p=>!p.archived);
   if(recProj===null||(recProj!=='__none'&&!data.projects.some(p=>p.id===recProj)))recProj=(projs[0]||data.projects[0]||{id:'__none'}).id;
   const lead=isLeader();
@@ -1793,7 +1848,8 @@ function renderRecordView(){
     ${lead?`<input id="rec-name" placeholder="기록지 이름 (예: 1호기 출하시험)" value="${esc(keepName||(cur?cur.name:''))}">
     <button class="pri" onclick="recSave(false)">${cur&&cur.projectId===(recProj==='__none'?'':recProj)?'덮어쓰기 저장':'이 프로젝트에 저장'}</button>
     ${cur?`<button onclick="recSave(true)">새 이름으로 저장</button>`:''}`:`<span class="lbl">저장·삭제는 파트장만 가능해요</span>`}
-    <button onclick="recNew()">새 기록지</button>`;
+    <button onclick="recNew()">새 기록지</button>
+    ${lead?`<span style="flex:1"></span><span class="lbl">${recTplVer?'양식 업데이트: '+new Date(recTplVer).toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'기본 양식'}</span><button onclick="document.getElementById('rec-file').click()">양식 업데이트</button><input type="file" id="rec-file" accept=".html,text/html" hidden onchange="recUploadTpl(this)">`:''}`;
   document.getElementById('rec-list').innerHTML=list.length?list.map(r=>`<span class="rec-chip ${r.id===recCur?'on':''}" onclick="recLoad('${r.id}')">${esc(r.name||'(이름 없음)')}<small>${esc((r.savedAt||'').slice(0,10))}</small>${lead?`<span onclick="event.stopPropagation();recDel('${r.id}')" title="삭제" style="color:var(--ink-faint);">×</span>`:''}</span>`).join(''):`<span class="rec-empty">이 프로젝트에 저장된 기록지가 없어요.</span>`;
 }
 function recSetProj(id){recProj=id;recCur=null;renderRecordView();}
