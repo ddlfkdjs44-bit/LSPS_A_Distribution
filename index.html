@@ -85,6 +85,7 @@
   .proj-bar .lbl{font-size:11px;font-weight:700;letter-spacing:.04em;color:var(--ink-faint);margin-right:2px;text-transform:uppercase;}
   .proj-bar .projchip.on{background:var(--accent-tint);border-color:var(--accent);color:var(--accent-deep);}
   .proj-bar .projchip.on:hover{color:var(--accent-deep);}
+  .proj-bar .lvchip.on{background:var(--accent-tint);border-color:var(--accent);color:var(--accent-deep);}
   .proj-bar .projall.on{background:var(--ink);color:#fff;border-color:var(--ink);}
   .proj-bar .projall.on:hover{color:#fff;}
   .proj-bar .pcheck{font-size:11px;font-weight:800;color:var(--accent);display:inline-flex;margin-right:-1px;}
@@ -1730,7 +1731,10 @@ function projAllIds(){const ids=data.projects.map(p=>p.id);if(data.events.some(e
 const EV_KINDS=[{re:/FAT/i,lbl:'FAT',bg:'#ff7a59',fg:'#fff'},{re:/자체|완성검사/,lbl:'자체',bg:'#ffd54a',fg:'#333'},{re:/SAT/i,lbl:'SAT',bg:'#2fb6a3',fg:'#fff'}];
 function evKind(e){const t=e.title||'';return EV_KINDS.find(k=>k.re.test(t))||null;}
 function kbadgeHtml(e){const k=evKind(e);return k?`<span class="kbadge" style="background:${k.bg};color:${k.fg}">${k.lbl}</span>`:'';}
-function passProj(e){if(projSel===null)return true;return projSel.includes(e.projectId||'__none');}
+let hideLeave=false;try{hideLeave=localStorage.getItem('lsps_hide_leave')==='1';}catch(_){}
+function isLeaveEv(e){if(e.leave||e.leaveRequestId)return true;const p=e.projectId?data.projects.find(x=>x.id===e.projectId):null;return !!(p&&p.name==='휴가');}
+function toggleHideLeave(){hideLeave=!hideLeave;try{localStorage.setItem('lsps_hide_leave',hideLeave?'1':'0');}catch(_){}renderAll();}
+function passProj(e){if(hideLeave&&isLeaveEv(e))return false;if(projSel===null)return true;return projSel.includes(e.projectId||'__none');}
 
 function setView(v){
   const tier=roleTier();
@@ -1885,6 +1889,7 @@ function renderProjectBar(){
   if(data.events.some(e=>!e.projectId)){const on=projSel!==null&&projSel.includes('__none');c+=`<div class="chip projchip ${on?'on':''}" onclick="toggleProj('__none')">${on?'<span class="pcheck">✓</span>':''}<span class="dot" style="background:#999"></span>프로젝트 없음</div>`;}
   c+=`<div class="chip add" onclick="addProject()">+ 추가</div>`;
   if(archivedP.length)c+=`<div class="chip toggle-archived" onclick="toggleShowArchivedProj()">${showArchivedProj?'보관 숨기기':'보관됨 '+archivedP.length}</div>`;
+  c+=`<div class="chip lvchip ${hideLeave?'on':''}" onclick="toggleHideLeave()" title="휴가 일정을 숨기고 봅니다">${hideLeave?'<span class="pcheck">✓</span>':''}휴가 제외</div>`;
   document.getElementById('proj-bar').innerHTML=c;
 }
 function toggleShowArchivedProj(){showArchivedProj=!showArchivedProj;renderProjectBar();}
